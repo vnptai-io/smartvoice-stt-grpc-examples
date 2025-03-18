@@ -1,5 +1,4 @@
 grpcio
 protobuf
 aiohttp
-librosa
 tqdm
