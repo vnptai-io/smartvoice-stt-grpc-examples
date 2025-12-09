@@ -35,12 +35,11 @@ cài thêm thư viện đọc file wav vì ta sẽ stream data từ một file w
 hãy lưu ý set đúng các biến sau để chạy được
 ```
 const audioFile = '../audio/4s.wav';
-const serverAddress = '';
-const metadata = [
-  ['authorization', ''],
-  ['token-id', ''],
-  ['token-key', ''],
-]
+const serverAddress = 'grpc.vnpt.vn:443'
+const metadata = new grpc.Metadata();
+metadata.add('authorization', '');
+metadata.add('token-id', '');
+metadata.add('token-key', '');
 ```
 
 

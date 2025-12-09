@@ -8,18 +8,19 @@ const AudioEncoding = require('./compiled/vnpt_audio_pb');
 
 
 const audioFile = '../audio/4s.wav';
-const serverAddress = '';
-const metadata = [
-  ['authorization', ''],
-  ['token-id', ''],
-  ['token-key', ''],
-]
+const serverAddress = 'grpc.vnpt.vn:443'
+const metadata = new grpc.Metadata();
+metadata.add('authorization', '');
+metadata.add('token-id', '');
+metadata.add('token-key', '');
+
 
 let client = new Services.VnptSpeechRecognitionClient(
-  serverAddress, grpc.credentials.createInsecure()
+  // serverAddress, grpc.credentials.createInsecure()
+  serverAddress, grpc.credentials.createSsl()
 );
 
-let call = client.streamingRecognize(metadata=metadata);
+let call = client.streamingRecognize(metadata);
 call.on('data', function (data) {
   data = data.toObject()
   console.log(data);
