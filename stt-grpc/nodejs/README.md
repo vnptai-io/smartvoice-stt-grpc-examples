@@ -6,7 +6,7 @@ Hướng dẫn sử dụng API STT grpc với node.js
 
 ### 1. cài protoc và compile file proto
 
-có nhiều cách cài và compile, trong đó có thể sử dụng protoc trong grpc-tools
+có nhiều cách cài và compile, trong đó có thể sử dụng protoc trong package grpc-tools của node.js
 ```
 npm install grpc-tools
 
@@ -27,7 +27,7 @@ cài thêm thư viện đọc file wav vì ta sẽ stream data từ một file w
 `npm install wav`
 
 
-### 4. code client và chạy code
+### 3. code client và chạy code
 
 `node run_streaming.js`
 
@@ -42,9 +42,4 @@ metadata.add('token-id', '');
 metadata.add('token-key', '');
 ```
 
-
-
-Notes:
-
-với các ngôn ngữ khác ta cũng thực hiện các bước tương tự, chi tiết tùy thuộc vào từng ngôn ngữ
-
+tài liệu tham khảo thêm về grpc js: https://grpc.io/docs/languages/node/basics/
