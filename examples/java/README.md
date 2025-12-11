@@ -112,11 +112,13 @@ final String TOKEN_KEY = "{{your_token_key}}";                // Thay bằng tok
 final String AUDIO_FILE_PATH = "file.wav";  // Hoặc đường dẫn tuyệt đối
 ```
 
-**Yêu cầu file audio:**
+**File audio mẫu:**
 - Format: WAV (LINEAR_PCM)
 - Sample rate: 8000 Hz
 - Channels: 1 (mono)
 - Bit depth: 16-bit
+
+File audio mẫu và file của bạn có thể khác nhau về thông số cấu hình, hãy detect file audio của bạn để cấu hình đúng để đảm bảo chất lượng đầu ra
 
 ## Sử dụng
 
