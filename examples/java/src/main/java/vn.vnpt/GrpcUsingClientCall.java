@@ -1,120 +1,165 @@
 package vn.vnpt;
 
 import io.grpc.ClientCall;
+import io.grpc.ManagedChannel;
+import io.grpc.Metadata;
+import io.grpc.Status;
+import io.grpc.netty.NettyChannelBuilder;
+import vnpt.audio.asr.VnptAsr;
+import vnpt.audio.asr.VnptSpeechRecognitionGrpc;
 
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
-// Recommended
+import static vn.vnpt.SmartVoiceClientUtils.*;
+
+/**
+ * Example gRPC client sử dụng ClientCall API để kết nối với VNPT SmartVoice ASR Service.
+ *
+ * <p>ClientCall API là low-level API cho phép kiểm soát chi tiết hơn về luồng gRPC streaming.
+ * Phương pháp này được khuyến nghị khi cần kiểm soát flow control và back-pressure.
+ *
+ * <p>Ví dụ này minh họa:
+ * <ul>
+ *   <li>Thiết lập kết nối gRPC với TLS</li>
+ *   <li>Xác thực sử dụng metadata headers</li>
+ *   <li>Streaming audio file theo chunks</li>
+ *   <li>Xử lý kết quả nhận dạng giọng nói real-time</li>
+ * </ul>
+ *
+ * <p><b>So với StreamObserver API:</b>
+ * <ul>
+ *   <li>Kiểm soát chi tiết hơn về flow control</li>
+ *   <li>Phù hợp cho streaming audio lớn</li>
+ *   <li>Code phức tạp hơn một chút</li>
+ * </ul>
+ *
+ * @author VNPT
+ * @version 1.0
+ * @since 2025
+ * @see GrpcUsingStreamObserver
+ * @see SmartVoiceClientUtils
+ */
 public class GrpcUsingClientCall {
 
-	protected abstract static class MakeRequestAudio<T> {
+    /**
+     * Main method minh họa cách sử dụng ClientCall API để stream audio tới VNPT ASR service.
+     *
+     * <p>Các bước thực hiện:
+     * <ol>
+     *   <li>Tạo gRPC channel với TLS</li>
+     *   <li>Tạo ClientCall với authentication headers</li>
+     *   <li>Gửi config request</li>
+     *   <li>Stream audio file theo chunks</li>
+     *   <li>Nhận và xử lý kết quả nhận dạng</li>
+     *   <li>Đợi cho đến khi hoàn thành</li>
+     *   <li>Đóng channel</li>
+     * </ol>
+     *
+     * @param args Command line arguments (không sử dụng)
+     * @throws InterruptedException nếu thread bị interrupt trong khi chờ
+     */
+    public static void main(String[] args) throws InterruptedException {
+        // ========== CẤU HÌNH ==========
+        // TODO: Thay thế các giá trị placeholder bằng credentials thực tế
+        final String AUTHORIZATION = "{{access_token}}";
+        final String TOKEN_ID = "{{token_id}}";
+        final String TOKEN_KEY = "{{token_key}}";
+        final String AUDIO_FILE_PATH = "file.wav";
 
-		private final ClientCall<T, ?> clientCall;
+        ManagedChannel channel = null;
 
-		public MakeRequestAudio(ClientCall<T, ?> clientCall) {
-			this.clientCall = clientCall;
-		}
+        try {
+            // ========== BƯỚC 1: TẠO GRPC CHANNEL ==========
+            System.out.println("Đang kết nối tới " + DEFAULT_HOST + "...");
+            channel = NettyChannelBuilder.forTarget(DEFAULT_HOST)
+                    .useTransportSecurity()
+                    .build();
 
-		abstract T makeMessage(com.google.protobuf.ByteString byteArray);
+            // ========== BƯỚC 2: TẠO METADATA HEADERS ==========
+            Metadata headers = createAuthMetadata(AUTHORIZATION, TOKEN_ID, TOKEN_KEY);
 
-		protected void makeRequestAudio(String filePath, int chuckFile) {
-			java.io.File f = new java.io.File(filePath);
-			try (java.io.FileInputStream fis = new java.io.FileInputStream(f)) {
-				byte[] buffer = new byte[chuckFile];
-				while (true) {
-					int n = fis.read(buffer);
-					if (n <= 0) {
-						break;
-					}
-					T request = makeMessage(com.google.protobuf.ByteString.copyFrom(buffer, 0, n));
-					clientCall.sendMessage(request);
-					clientCall.request(1);
-				}
-				clientCall.halfClose();
-			} catch (Exception e) {
-				e.printStackTrace();
-				clientCall.cancel("unexpected error: " + e.getMessage(), e);
-			}
-		}
-	}
+            // ========== BƯỚC 3: TẠO CLIENT CALL ==========
+            ClientCall<VnptAsr.StreamingRecognizeRequest, VnptAsr.StreamingRecognizeResponse> clientCall =
+                channel.newCall(
+                    VnptSpeechRecognitionGrpc.getStreamingRecognizeMethod(),
+                    io.grpc.CallOptions.DEFAULT
+                );
 
-	public static void main(String[] args) throws InterruptedException {
-		final String AUTHORIZATION = "bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkOTIwODRmMS03ODVlLTExZWUtOTRjZC1hZmU4MDRiZGUwNDgiLCJhdWQiOlsicmVzdHNlcnZpY2UiXSwidXNlcl9uYW1lIjoidHJhbnF1YW5ndHJ1b25nLmRldkBnbWFpbC5jb20iLCJzY29wZSI6WyJyZWFkIl0sImlzcyI6Imh0dHBzOi8vbG9jYWxob3N0IiwibmFtZSI6InRyYW5xdWFuZ3RydW9uZy5kZXZAZ21haWwuY29tIiwidXVpZF9hY2NvdW50IjoiZDkyMDg0ZjEtNzg1ZS0xMWVlLTk0Y2QtYWZlODA0YmRlMDQ4IiwiYXV0aG9yaXRpZXMiOlsiVVNFUiJdLCJqdGkiOiI5YWMwOWFlNi1hZTExLTQwMDktYTkxOS04YzNlMjZiMWEzNjciLCJjbGllbnRfaWQiOiJhZG1pbmFwcCJ9.0Qv515SxnWg5ISN-YID6qW775WvypszMkf1DB9-aEoDwfMi9BNCFS1LFrNj98PfdhvFWlvLEQyXp6RI50VYUYOxKl9iTKyfw7Lm7ZdtdBBn27P0lqi8n5upMhn-iLO-zcrM2Eg-YIDaOnDnDtPdJ9ZYdoDuhyIvViJoos2bH8d_k0mFuaYkxMMKq4g4jRXZchxBrU84reqpCA4b3uayziF99m8QBxvzTMU3xAbw6CHke6rb8wheyw_4h9jKIgahgHIXQ_EkPBAKiES0kdPA7blue20BouPUIfpA0Hq1Xi0ukECUQK6gxWzU3jSqjqbutjrpJtqkMfYq4PzdBRJJrGg";
-		final String TOKEN_ID = "090f29df-e589-4b74-e063-62199f0a5905";
-		final String TOKEN_KEY = "MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAJ6NcdJ31NQj1BXcBJfXFtsVT2VJc6gjmKjV57D8fUYMvQErYD9E85N0xBO0ZWlVE9XhJe6NQ7fI3lQJxwRKHSMCAwEAAQ==";
-		final String HOST = "grpc.vnpt.vn";
+            // Sử dụng CountDownLatch để đợi response
+            CountDownLatch completionLatch = new CountDownLatch(1);
 
-		io.grpc.ManagedChannel channel = io.grpc.netty.NettyChannelBuilder.forTarget(HOST)
-				.useTransportSecurity()
-				.build();
+            // ========== BƯỚC 4: START CLIENT CALL VỚI LISTENER ==========
+            clientCall.start(new ClientCall.Listener<VnptAsr.StreamingRecognizeResponse>() {
+                @Override
+                public void onHeaders(Metadata responseHeaders) {
+                    System.out.println("=== Response Headers ===");
+                    responseHeaders.keys().forEach(key -> {
+                        String value = responseHeaders.get(
+                            Metadata.Key.of(key, Metadata.ASCII_STRING_MARSHALLER)
+                        );
+                        System.out.println(key + ": " + value);
+                    });
+                }
 
-		io.grpc.Metadata header = new io.grpc.Metadata();
-		header.put(io.grpc.Metadata.Key.of("authorization", io.grpc.Metadata.ASCII_STRING_MARSHALLER), AUTHORIZATION);
-		header.put(io.grpc.Metadata.Key.of("token-id", io.grpc.Metadata.ASCII_STRING_MARSHALLER), TOKEN_ID);
-		header.put(io.grpc.Metadata.Key.of("token-key", io.grpc.Metadata.ASCII_STRING_MARSHALLER), TOKEN_KEY);
-		header.put(io.grpc.Metadata.Key.of("bot-id", io.grpc.Metadata.ASCII_STRING_MARSHALLER), "truong-bot-id");
-		header.put(io.grpc.Metadata.Key.of("service-code", io.grpc.Metadata.ASCII_STRING_MARSHALLER), "emotion-service");
+                @Override
+                public void onMessage(VnptAsr.StreamingRecognizeResponse message) {
+                    printResponse(message);
+                }
 
-		io.grpc.ClientCall<vnpt.audio.asr.VnptAsr.StreamingRecognizeRequest, vnpt.audio.asr.VnptAsr.StreamingRecognizeResponse> clientCall = channel
-				.newCall(vnpt.audio.asr.VnptSpeechRecognitionGrpc.getStreamingRecognizeMethod(), io.grpc.CallOptions.DEFAULT);
-		AtomicBoolean stop = new AtomicBoolean(false);
-		clientCall.start(new io.grpc.ClientCall.Listener<>() {
-			                 @Override
-			                 public void onHeaders(io.grpc.Metadata headers) {
-				                 headers.keys().forEach(k -> System.out.println("KEY: " + k + ", VALUE: " + headers.get(io.grpc.Metadata.Key.of(k, io.grpc.Metadata.ASCII_STRING_MARSHALLER))));
-			                 }
+                @Override
+                public void onClose(Status status, Metadata trailers) {
+                    System.out.println("=== Kết thúc stream ===");
+                    System.out.println("Status: " + status);
+                    if (!status.isOk()) {
+                        System.err.println("Lỗi: " + status.getDescription());
+                    }
+                    completionLatch.countDown();
+                }
+            }, headers);
 
-			                 @Override
-			                 public void onMessage(vnpt.audio.asr.VnptAsr.StreamingRecognizeResponse message) {
-				                 try {
-					                 String messageStr = com.google.protobuf.util.JsonFormat.printer().print(message);
-					                 System.out.println("onMessage" + messageStr);
-				                 } catch (com.google.protobuf.InvalidProtocolBufferException e) {
-					                 throw new RuntimeException(e);
-				                 }
-			                 }
+            // ========== BƯỚC 5: GỬI CONFIG REQUEST ==========
+            VnptAsr.StreamingRecognizeRequest configRequest = createDefaultConfigRequest(true);
+            clientCall.sendMessage(configRequest);
+            clientCall.request(1);
+            System.out.println("Đã gửi config request");
 
-			                 @Override
-			                 public void onClose(io.grpc.Status status, io.grpc.Metadata trailers) {
-				                 System.out.println("onClose" + status);
-				                 stop.set(true);
-			                 }
-		                 }, header
-		);
+            // ========== BƯỚC 6: STREAM AUDIO FILE ==========
+            ClientCallAudioStreamHandler<VnptAsr.StreamingRecognizeRequest> audioStreamHandler =
+                new ClientCallAudioStreamHandler<>(clientCall) {
+                    @Override
+                    protected VnptAsr.StreamingRecognizeRequest makeMessage(com.google.protobuf.ByteString audioData) {
+                        return VnptAsr.StreamingRecognizeRequest.newBuilder()
+                                .setAudioContent(audioData)
+                                .build();
+                    }
+                };
 
-		vnpt.audio.asr.VnptAsr.StreamingRecognizeRequest config = vnpt.audio.asr.VnptAsr.StreamingRecognizeRequest.newBuilder()
-				.setStreamingConfig(
-						vnpt.audio.asr.VnptAsr.StreamingRecognitionConfig.newBuilder()
-								.setConfig(vnpt.audio.asr.VnptAsr.RecognitionConfig.newBuilder()
-										.setEncoding(vnpt.audio.VnptAudio.AudioEncoding.LINEAR_PCM)
-										.setSampleRateHertz(8000) //thay thế
-										.setLanguageCode("vi-VN")
-										.setMaxAlternatives(1)
-										.setAudioChannelCount(1)
-										.setEnableWordTimeOffsets(false)
-										.setEnableAutomaticPunctuation(false)
-										.setEnableSeparateRecognitionPerChannel(false)
-										.putAllCustomConfiguration(java.util.Map.of("invert_text", "1"))
-										.setModel("fast_streaming").build())
-								.setInterimResults(true)
-								.build())
-				.build();
-		clientCall.sendMessage(config);
-		clientCall.request(1);
+            System.out.println("Đang stream audio file: " + AUDIO_FILE_PATH);
+            audioStreamHandler.streamAudioFile(AUDIO_FILE_PATH, DEFAULT_CHUNK_SIZE);
 
+            // ========== BƯỚC 7: ĐỢI HOÀN THÀNH ==========
+            if (!completionLatch.await(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                System.err.println("Timeout sau " + DEFAULT_TIMEOUT_SECONDS + " giây");
+                clientCall.cancel("Timeout", null);
+            }
 
-		MakeRequestAudio<vnpt.audio.asr.VnptAsr.StreamingRecognizeRequest> make = new MakeRequestAudio<>(clientCall) {
-			@Override
-			vnpt.audio.asr.VnptAsr.StreamingRecognizeRequest makeMessage(com.google.protobuf.ByteString byteArray) {
-				return vnpt.audio.asr.VnptAsr.StreamingRecognizeRequest.newBuilder()
-						.setAudioContent(byteArray)
-						.build();
-			}
-		};
+            System.out.println("Hoàn thành!");
 
-		make.makeRequestAudio("file.wav", 2048);
-		while (!stop.get()) {
-			Thread.sleep(100);
-		}
-	}
+        } finally {
+            // ========== BƯỚC 8: ĐÓNG CHANNEL ==========
+            if (channel != null) {
+                System.out.println("Đang đóng kết nối...");
+                channel.shutdown();
+                try {
+                    if (!channel.awaitTermination(5, TimeUnit.SECONDS)) {
+                        channel.shutdownNow();
+                    }
+                } catch (InterruptedException e) {
+                    channel.shutdownNow();
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
 }

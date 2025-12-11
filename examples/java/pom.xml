@@ -11,18 +11,12 @@
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
-        <protoc.version>4.26.1</protoc.version>
-        <grpc.version>1.63.0</grpc.version>
+        <protoc.version>4.33.2</protoc.version>
+        <grpc.version>1.77.0</grpc.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <dependencies>
-        <!-- Nếu sử dụng java 17 trở lên thì cần phải import thư viện javax-annotation-api do bộ thư viện của grpc vẫn còn sử dụng package javax-->
-        <dependency>
-            <groupId>javax.annotation</groupId>
-            <artifactId>javax.annotation-api</artifactId>
-            <version>1.3.2</version>
-        </dependency>
         <dependency>
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java-util</artifactId>
